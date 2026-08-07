@@ -28,3 +28,5 @@ Thumbs.db
 
 # Video drafts
 demos/
+backend/server.pid
+frontend/vite.pid
