@@ -90,11 +90,11 @@ _CATEGORIES = [
 ]
 _RISK_PATTERNS: list[tuple[re.Pattern, str, float, str]] = [
     (re.compile(r"adverse|hospitaliz|serious|life.?threat|death|emergency", re.I), "Critical", 0.95, "Potential serious adverse event / patient safety signal"),
-    (re.compile(r"contamin|foreign|particle|glass|mold|bacteria|microbial|infection", re.I), "High", 0.85, "Possible contamination or foreign matter - product quality hazard"),
+    (re.compile(r"contamin|foreign|particle|glass|mold|bacteria|microbial|infection|specks|residue|burnt|burning|discolor|black spot", re.I), "High", 0.85, "Possible contamination or foreign matter - product quality hazard"),
     (re.compile(r"swelling|rash|allerg|hives|itch|difficulty breathing", re.I), "High", 0.8, "Possible adverse reaction with patient impact"),
     (re.compile(r"no effect|ineffect|not working|no relief|didn'?t work", re.I), "High", 0.75, "Reported lack of efficacy - potential potency issue"),
-    (re.compile(r"wrong label|label.*wrong|incorrect.*label|missing.*label", re.I), "Medium", 0.65, "Labeling discrepancy - potential patient confusion"),
-    (re.compile(r"color|colour|smell|odor|taste|appearance|discolor", re.I), "Medium", 0.6, "Appearance / organoleptic deviation"),
+    (re.compile(r"wrong label|label.*wrong|incorrect.*label|missing.*label|strength.*printed|printed.*strength", re.I), "Medium", 0.65, "Labeling discrepancy - potential patient confusion"),
+    (re.compile(r"color|colour|smell|odor|taste|appearance|looks", re.I), "Medium", 0.6, "Appearance / organoleptic deviation"),
     (re.compile(r"packag|bottle|blister|broken|leak|damaged|seal", re.I), "Medium", 0.55, "Packaging integrity issue"),
     (re.compile(r"capsule|tablet|hard|brittle|stuck|empty", re.I), "Medium", 0.5, "Dosage form defect"),
     (re.compile(r"delayed|late|delivery|shipping|shipment|logistics|order", re.I), "Low", 0.35, "Logistics / delivery concern"),
