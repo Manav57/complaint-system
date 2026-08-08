@@ -2,7 +2,7 @@
 
 AI-powered complaint intake and risk assessment for pharmaceutical manufacturing (API / FDF), built for the AIVOA Round 1 AI Product Engineer (Fresher) assessment.
 
-**Stack (as mandated):** React + Redux (frontend) · FastAPI (backend) · LangGraph (agent orchestration) · Groq `gemma2-9b-it` (LLM, with optional `llama-3.3-70b-versatile` for heavier reasoning) · PostgreSQL (DB) · Google "Inter" font.
+**Stack (as mandated):** React + Redux (frontend) · FastAPI (backend) · LangGraph (agent orchestration) · Groq `llama-3.1-8b-instant` (LLM, with optional `llama-3.3-70b-versatile` for heavier reasoning) · PostgreSQL (DB) · Google "Inter" font.
 
 ## Features
 
@@ -25,7 +25,7 @@ AI-powered complaint intake and risk assessment for pharmaceutical manufacturing
 frontend/  React 18 + Redux Toolkit + React Router (Vite)  →  :3000 (proxy /api → :8000)
 backend/   FastAPI + SQLAlchemy 2 + Alembic  →  :8000  (OpenAPI docs at /docs)
            app/ai/graph.py   →  LangGraph StateGraph workflows (extract + assess)
-           app/ai/llm.py     →  Groq client (gemma2-9b-it) with rule-based mock fallback
+           app/ai/llm.py     →  Groq client (llama-3.1-8b-instant) with rule-based mock fallback
 DB         PostgreSQL  →  complaints, status_history
 ```
 
@@ -38,11 +38,11 @@ DB         PostgreSQL  →  complaints, status_history
 
 ### Groq vs mock
 
-If `GROQ_API_KEY` is set, all agent calls go to **Groq** (`gemma2-9b-it`, `llama-3.3-70b-versatile` for the risk + root-cause reasoning steps). Without a key, a **clearly-marked rule-based mock** (logs `using rule-based MOCK LLM`) keeps the whole app functional so the full flow can be demoed — the app never crashes without a key.
+If `GROQ_API_KEY` is set, all agent calls go to **Groq** (`llama-3.1-8b-instant`, `llama-3.3-70b-versatile` for the risk + root-cause reasoning steps). Without a key, a **clearly-marked rule-based mock** (logs `using rule-based MOCK LLM`) keeps the whole app functional so the full flow can be demoed — the app never crashes without a key.
 
 ## Setup & Run
 
-Prerequisites: Python 3.11+, Node 18+, PostgreSQL running locally, Groq API key (free at https://console.groq.com/keys).
+Prerequisites: Python 3.11+, Node 18+, Groq API key (free at https://console.groq.com/keys). PostgreSQL is recommended and used for full CRUD/persistence in the demo environment, but **not strictly required** — the backend automatically falls back to a local `complaints.db` (SQLite) file if Postgres is unreachable or `DATABASE_URL` is unset (a clear warning is logged).
 
 ### 1. Backend
 
@@ -73,9 +73,9 @@ npm run dev                     # http://localhost:3000
 
 | Variable | Description | Default |
 |---|---|---|
-| `DATABASE_URL` | SQLAlchemy Postgres URL | `postgresql+psycopg2://postgres:postgres@localhost:5432/complaint_system` |
+| `DATABASE_URL` | SQLAlchemy URL — Postgres/MySQL preferred; SQLite fallback if unset or unreachable | `postgresql+psycopg2://postgres:postgres@localhost:5432/complaint_system` |
 | `GROQ_API_KEY` | Groq API key (empty → mock mode) | *(empty)* |
-| `GROQ_MODEL` | Default model | `gemma2-9b-it` |
+| `GROQ_MODEL` | Default model | `llama-3.1-8b-instant` |
 | `GROQ_HEAVY_MODEL` | Heavier reasoning model | `llama-3.3-70b-versatile` |
 | `CORS_ORIGINS` | Comma-separated allowed origins | `http://localhost:3000,http://127.0.0.1:3000` |
 
@@ -97,7 +97,7 @@ npm run dev                     # http://localhost:3000
 
 ## What's implemented vs. stubbed
 
-**Implemented:** all core + bonus features, PostgreSQL persistence with Alembic migrations, status history tracking, seeded sample data, agent sanity test (`backend/test_agent.py`), full CRUD, duplicate detection, complete UI.
+**Implemented:** all core + bonus features, PostgreSQL persistence (with automatic SQLite fallback) and Alembic migrations, status history tracking, seeded sample data, agent sanity test (`backend/test_agent.py`), full CRUD, duplicate detection, complete UI.
 
 **Stubbed / note:** without `GROQ_API_KEY` the LLM is a deterministic rule-based mock (clearly logged) — swap in a real key for live Groq output; no user auth (single-tenant demo scope); no file/image attachments (photos referenced in description text).
 

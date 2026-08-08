@@ -71,7 +71,7 @@ const aiSlice = createSlice({
         state.assess.loading = true
         state.assess.error = null
         state.assess.steps = [
-          { title: 'Risk classification', status: 'running', detail: 'Calling Groq (gemma2-9b-it)…' },
+          { title: 'Risk classification', status: 'running', detail: 'Calling Groq (llama-3.1-8b-instant)…' },
         ]
       })
       .addCase(runAssess.fulfilled, (state, action) => {

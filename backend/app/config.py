@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/complaint_system"
 
     groq_api_key: str = ""
-    groq_model: str = "gemma2-9b-it"
+    groq_model: str = "llama-3.1-8b-instant"
     groq_heavy_model: str = "llama-3.3-70b-versatile"
 
     @property

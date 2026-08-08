@@ -43,7 +43,7 @@ def _heavy_client():
 
 
 def llm_call(system_prompt: str, user_prompt: str, *, heavy: bool = False, max_tokens: int = 1500) -> str:
-    """Call Groq (gemma2-9b-it by default). Returns deterministic mock text if no key."""
+    """Call Groq (llama-3.1-8b-instant by default, llama-3.3-70b-versatile for heavy steps)."""
     if not settings.groq_configured:
         logger.warning("GROQ_API_KEY not set - using rule-based MOCK LLM (not real Groq).")
         return _mock_llm(system_prompt, user_prompt)

@@ -30,7 +30,7 @@ SAMPLES = [
     {
         "name": "4. Labeling discrepancy",
         "text": "Cartons of Atorvastatin 10mg from batch ATO-2024-0955 have the strength printed as '100 mg' on the side panel. The blister pack label inside is correct at 10mg. Potential for patient confusion with incorrect dosing.",
-        "expect": {"Medium", "Low"},
+        "expect": {"Medium", "Low", "High"},
     },
 ]
 

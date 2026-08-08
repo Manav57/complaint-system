@@ -19,7 +19,7 @@ Start servers first: backend on :8000, frontend on :3000 (see root README).
 
 ## Demo Video 2 — LangGraph workflow + AI form population + Copilot (5–10 min)
 
-1. **Intro (0:30)** — Where the agent lives: `backend/app/ai/graph.py` + `llm.py`; LangGraph StateGraph wired to Groq (gemma2-9b-it; llama-3.3-70b-versatile for heavy reasoning). Show the code briefly.
+1. **Intro (0:30)** — Where the agent lives: `backend/app/ai/graph.py` + `llm.py`; LangGraph StateGraph wired to Groq (llama-3.1-8b-instant; llama-3.3-70b-versatile for heavy reasoning). Show the code briefly.
 2. **Form auto-population (2:00)** — Go to **Log Complaint** → paste a raw customer message (use the sample dropdown):
    > "Hi, I'm Dr. Jane Wilson from Lakeside Pharmacy. We received Paracetamol 500mg tablets from batch PAR-2025-2210 with a strange black residue on the surface and a burnt smell. This looks like contamination, 8 tablets affected, expiry 09/2027."
    Click **Auto-populate form** → watch the fields fill (name, company, product, batch, category, severity, strength). Completeness banner appears.

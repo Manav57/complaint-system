@@ -76,7 +76,8 @@ def _extract_node(state: ComplaintState) -> dict:
     raw = state.get("raw_text") or state.get("description") or ""
     response = llm_call(EXTRACT_SYSTEM, raw)
     data = extract_json(response) or {}
-    fields = {k: ("" if v is None else v) for k, v in data.items() if k != "extracted"}
+    fields = {k: _stringify(v) for k, v in data.items() if k != "extracted"}
+    fields = {k: v for k, v in fields.items() if v}
     if not fields.get("description"):
         fields["description"] = raw
     return {"extracted_fields": fields}
@@ -137,7 +138,15 @@ def _assess_completeness_node(state: ComplaintState) -> dict:
 def _assess_summary_node(state: ComplaintState) -> dict:
     desc = state.get("description", "")[:2000]
     response = llm_call(SUMMARY_SYSTEM, desc)
-    return {"summary": response.strip()}
+    summary = response.strip()
+    summary = re.sub(r"^[\"\u201c\u2018\*\s]+", "", summary)
+    summary = re.sub(
+        r"^(?:here['\u2019]s a concise[^:]*|executive summary|complaint summary|summary)(?::|\*\*)?\s*[\*\s]*",
+        "",
+        summary,
+        flags=re.I,
+    ).strip()
+    return {"summary": summary}
 
 
 def _assess_rootcause_node(state: ComplaintState) -> dict:
@@ -145,6 +154,25 @@ def _assess_rootcause_node(state: ComplaintState) -> dict:
     response = llm_call(ROOTCAUSE_SYSTEM, desc, heavy=True)
     data = extract_json(response) or {}
     return {"root_cause": data}
+
+
+def _stringify(value) -> str | None:
+    """Normalize LLM output (str / list / dict) into a clean string."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, list):
+        return "; ".join(str(v).strip() for v in value if str(v).strip())
+    if isinstance(value, dict):
+        parts = []
+        for k, v in value.items():
+            if isinstance(v, list):
+                parts.append(f"{k}: {'; '.join(str(x) for x in v)}")
+            else:
+                parts.append(f"{k}: {v}")
+        return "; ".join(parts)
+    return str(value)
 
 
 def _assess_final(state: ComplaintState) -> dict:
@@ -159,8 +187,8 @@ def _assess_final(state: ComplaintState) -> dict:
             "severity": risk.get("severity"),
             "completeness": state.get("completeness", {}),
             "summary": state.get("summary", ""),
-            "root_cause_suggestion": state.get("root_cause", {}).get("root_cause"),
-            "capa_recommendation": state.get("root_cause", {}).get("capa"),
+            "root_cause_suggestion": _stringify(state.get("root_cause", {}).get("root_cause")),
+            "capa_recommendation": _stringify(state.get("root_cause", {}).get("capa")),
             "duplicate_of": dup.get("complaint_id"),
             "duplicate_score": dup.get("score"),
         }

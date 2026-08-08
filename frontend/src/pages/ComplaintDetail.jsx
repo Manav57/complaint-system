@@ -225,7 +225,7 @@ export default function ComplaintDetail() {
               <span style={{ fontSize: 18 }}>🤖</span>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>AI Copilot</div>
-                <div style={{ fontSize: 11.5, opacity: 0.85 }}>LangGraph · Groq gemma2-9b-it</div>
+                <div style={{ fontSize: 11.5, opacity: 0.85 }}>LangGraph · Groq llama-3.1-8b-instant</div>
               </div>
               <span className="copilot-badge">Analysis</span>
             </div>
