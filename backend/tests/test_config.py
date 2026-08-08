@@ -14,7 +14,7 @@ def test_settings_loads_defaults(monkeypatch):
     s = Settings()
     assert s.app_name == "AIVOA Pharma Complaint System"
     assert s.app_version == "1.0.0"
-    assert s.groq_model == "llama-3.1-8b-instant"
+    assert s.groq_model == "gemma2-9b-it"
     assert s.groq_heavy_model == "llama-3.3-70b-versatile"
     assert s.database_url.startswith("postgresql")
 

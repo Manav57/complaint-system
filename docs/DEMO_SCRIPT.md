@@ -19,15 +19,16 @@ Start servers first: backend on :8000, frontend on :3000 (see root README).
 
 ## Demo Video 2 — LangGraph workflow + AI form population + Copilot (5–10 min)
 
-1. **Intro (0:30)** — Where the agent lives: `backend/app/ai/graph.py` + `llm.py`; LangGraph StateGraph wired to Groq (llama-3.1-8b-instant; llama-3.3-70b-versatile for heavy reasoning). Show the code briefly.
+1. **Intro (0:30)** — Where the agent lives: `backend/app/ai/graph.py` + `llm.py`; LangGraph StateGraph wired to Groq (gemma2-9b-it; llama-3.3-70b-versatile for heavy reasoning). Show the code briefly.
 2. **Form auto-population (2:00)** — Go to **Log Complaint** → paste a raw customer message (use the sample dropdown):
    > "Hi, I'm Dr. Jane Wilson from Lakeside Pharmacy. We received Paracetamol 500mg tablets from batch PAR-2025-2210 with a strange black residue on the surface and a burnt smell. This looks like contamination, 8 tablets affected, expiry 09/2027."
    Click **Auto-populate form** → watch the fields fill (name, company, product, batch, category, severity, strength). Completeness banner appears.
 3. **Copilot risk assessment (2:00)** — click **Run Copilot assessment** → watch the LangGraph steps render (assess_risk → check_completeness → gen_summary → gen_root_cause) → risk pill, score, rationale, summary, root cause, CAPA appear; duplicate banner if matched.
-4. **Submit (1:00)** — click **Submit complaint** → lands on detail page; AI results persisted (run `/api/ai/analyze` or show stored `risk_rationale` in psql).
-5. **Run 2 more varied complaints (2:00)** — adverse event text (Critical result) and logistics delay (Low result) — show the classifier differentiates.
-6. **Swagger deep dive (1:00)** — POST `/api/ai/assess` with a description, show the full JSON (risk_level, risk_score, rationale, capa_recommendation).
-7. **Wrap (0:30)** — recap: LangGraph orchestration + Groq + mock fallback without a key.
+4. **Conversational correction + PDF upload (2:00)** — in the Copilot chat panel, paste a message → fields populate + chat reply appears. Send a follow-up like "the batch is actually PAR-2025-2211" → **only the batch field changes** in the form (prove it: every other field untouched). Attach `docs/sample-complaints/complaint_omeprazole_adverse_event.pdf` via 📎 → fields populate from the PDF text layer; correct a value afterwards and watch only that field update. Show the LangGraph amend node in `graph.py` + the pypdf extraction in `app/ai/pdf.py`.
+5. **Submit (1:00)** — click **Submit complaint** → lands on detail page; AI results persisted (run `/api/ai/analyze` or show stored `risk_rationale` in psql).
+6. **Run 2 more varied complaints (2:00)** — adverse event text (Critical result) and logistics delay (Low result) — show the classifier differentiates.
+7. **Swagger deep dive (1:00)** — POST `/api/ai/assess` with a description, show the full JSON (risk_level, risk_score, rationale, capa_recommendation). Also show `POST /api/ai/session` and `POST /api/ai/session/{id}/message`.
+8. **Wrap (0:30)** — recap: LangGraph orchestration + Groq + mock fallback without a key.
 
 ### Tip for clean demo
 Set `GROQ_API_KEY` in `backend/.env` for live LLM output; without it the app runs on the deterministic mock (everything still works — the mock is logged with a warning).

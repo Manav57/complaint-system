@@ -25,6 +25,25 @@ export const runCompleteness = createAsyncThunk('ai/completeness', async (text, 
   }
 })
 
+export const createAiSession = createAsyncThunk('ai/sessionCreate', async (_, { rejectWithValue }) => {
+  try {
+    return await api.aiCreateSession()
+  } catch (e) {
+    return rejectWithValue(e.message)
+  }
+})
+
+export const sendAiMessage = createAsyncThunk(
+  'ai/sessionMessage',
+  async ({ sessionId, body }, { rejectWithValue }) => {
+    try {
+      return await api.aiSendMessage(sessionId, body)
+    } catch (e) {
+      return rejectWithValue(e.message)
+    }
+  }
+)
+
 const initialState = {
   extract: { fields: {}, loading: false, error: null },
   assess: {
@@ -34,6 +53,7 @@ const initialState = {
     error: null,
   },
   completeness: { report: null, loading: false, error: null },
+  session: { sessionId: null, loading: false, error: null },
 }
 
 const aiSlice = createSlice({
@@ -48,6 +68,9 @@ const aiSlice = createSlice({
     },
     resetCompleteness(state) {
       state.completeness = { report: null, loading: false, error: null }
+    },
+    resetSession(state) {
+      state.session = { sessionId: null, loading: false, error: null }
     },
     addStep(state, action) {
       state.assess.steps.push(action.payload)
@@ -71,7 +94,7 @@ const aiSlice = createSlice({
         state.assess.loading = true
         state.assess.error = null
         state.assess.steps = [
-          { title: 'Risk classification', status: 'running', detail: 'Calling Groq (llama-3.1-8b-instant)…' },
+          { title: 'Risk classification', status: 'running', detail: 'Calling Groq (gemma2-9b-it)…' },
         ]
       })
       .addCase(runAssess.fulfilled, (state, action) => {
@@ -101,8 +124,31 @@ const aiSlice = createSlice({
         state.completeness.loading = false
         state.completeness.error = action.payload
       })
+      .addCase(createAiSession.pending, (state) => {
+        state.session.loading = true
+        state.session.error = null
+      })
+      .addCase(createAiSession.fulfilled, (state, action) => {
+        state.session.loading = false
+        state.session.sessionId = action.payload.session_id
+      })
+      .addCase(createAiSession.rejected, (state, action) => {
+        state.session.loading = false
+        state.session.error = action.payload
+      })
+      .addCase(sendAiMessage.pending, (state) => {
+        state.session.loading = true
+        state.session.error = null
+      })
+      .addCase(sendAiMessage.fulfilled, (state, action) => {
+        state.session.loading = false
+      })
+      .addCase(sendAiMessage.rejected, (state, action) => {
+        state.session.loading = false
+        state.session.error = action.payload
+      })
   },
 })
 
-export const { resetExtract, resetAssess, resetCompleteness, addStep } = aiSlice.actions
+export const { resetExtract, resetAssess, resetCompleteness, resetSession, addStep } = aiSlice.actions
 export default aiSlice.reducer

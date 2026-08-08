@@ -101,6 +101,34 @@ describe('api service', () => {
     expect(fetchMock.mock.calls[4][1].method).toBe('POST')
   })
 
+  it('aiCreateSession POSTs to /ai/session', async () => {
+    fetchMock.mockResolvedValue(jsonOk({ session_id: 's1', fields: {}, reply: 'hi' }))
+    const result = await api.aiCreateSession()
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/ai/session')
+    expect(fetchMock.mock.calls[0][1].method).toBe('POST')
+    expect(result.session_id).toBe('s1')
+  })
+
+  it('aiSendMessage POSTs JSON body to the session', async () => {
+    fetchMock.mockResolvedValue(jsonOk({ session_id: 's1', fields: {}, changed: {}, reply: 'ok' }))
+    await api.aiSendMessage('s1', { text: 'hello' })
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/ai/session/s1/message')
+    expect(opts.method).toBe('POST')
+    expect(JSON.parse(opts.body)).toEqual({ text: 'hello' })
+  })
+
+  it('aiSendMessage passes FormData without a Content-Type header', async () => {
+    fetchMock.mockResolvedValue(jsonOk({ session_id: 's1', fields: {}, changed: {}, reply: 'ok' }))
+    const fd = new FormData()
+    fd.append('file', new Blob(['pdf']), 'c.pdf')
+    await api.aiSendMessage('s1', fd)
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/ai/session/s1/message')
+    expect(opts.body).toBe(fd)
+    expect(opts.headers).not.toHaveProperty('Content-Type')
+  })
+
   it('throws Error with JSON detail on failure', async () => {
     fetchMock.mockResolvedValue(jsonErr({ detail: 'Complaint not found' }, 404, 'Not Found'))
     await expect(api.getComplaint('nope')).rejects.toThrow('Complaint not found')

@@ -1,8 +1,10 @@
 const BASE = '/api'
 
 async function request(path, options = {}) {
+  // FormData (multipart upload) must NOT set Content-Type — the browser adds the boundary.
+  const headers = options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...options,
   })
   if (!res.ok) {
@@ -37,4 +39,12 @@ export const api = {
   aiCompleteness: (text) => request('/ai/completeness', { method: 'POST', body: JSON.stringify({ text }) }),
   aiDuplicates: (id) => request(`/ai/duplicates/${id}`),
   aiAnalyze: (id) => request(`/ai/analyze?complaint_id=${id}`, { method: 'POST' }),
+
+  aiCreateSession: () => request('/ai/session', { method: 'POST' }),
+  aiSendMessage: (sessionId, body) => {
+    if (body instanceof FormData) {
+      return request(`/ai/session/${sessionId}/message`, { method: 'POST', body })
+    }
+    return request(`/ai/session/${sessionId}/message`, { method: 'POST', body: JSON.stringify(body) })
+  },
 }

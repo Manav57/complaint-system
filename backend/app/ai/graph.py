@@ -1,13 +1,16 @@
 """LangGraph agent workflow for complaint processing.
 
-Two workflows wired to Groq:
+Three workflows wired to Groq:
   1. extract_workflow  - auto-populates the complaint form from free text
-  2. assess_workflow   - Copilot risk assessment (+ completeness, summary,
+  2. amend_workflow    - applies a conversational correction: given current
+                         fields + a new message, returns ONLY the changed fields
+  3. assess_workflow   - Copilot risk assessment (+ completeness, summary,
                          duplicates, root cause, CAPA in one graph)
 
 Built with langgraph StateGraph so the traversal is visible in /docs and
 traceable in the UI copilot panel.
 """
+import json
 import logging
 import re
 from typing import Any, TypedDict
@@ -53,6 +56,21 @@ ROOTCAUSE_SYSTEM = (
     "plan. Return STRICT JSON only with keys root_cause and capa."
 )
 
+AMEND_SYSTEM = (
+    "You are an AI intake assistant for a pharmaceutical manufacturing company. "
+    "The user is correcting or extending previously extracted complaint data. "
+    "You receive the CURRENT extracted fields as JSON and a NEW message from the "
+    "customer. Amend the record: return STRICT JSON (no markdown, no commentary) "
+    "containing ONLY the fields that should CHANGE based on the new message, using "
+    "the same keys as extraction: complainant_name, complainant_email, "
+    "complainant_phone, complainant_company, product_name, batch_lot_number, "
+    "dosage_form, strength, expiry_date, category, severity, quantity_affected. "
+    "Do NOT repeat fields that are unchanged. If the new message changes nothing, "
+    "return {} (an empty JSON object). Category must be one of: Product Quality, "
+    "Packaging, Labeling, Adverse Event, Contamination, Potency, Stability, "
+    "Dissolution, Delivery / Logistics, Service, Other."
+)
+
 
 class ComplaintState(TypedDict, total=False):
     description: str
@@ -62,6 +80,7 @@ class ComplaintState(TypedDict, total=False):
     severity: str | None
     raw_text: str
     extracted_fields: dict[str, Any]
+    field_changes: dict[str, Any]
     completeness: dict[str, Any]
     risk: dict[str, Any]
     summary: str
@@ -98,7 +117,37 @@ def build_extract_workflow():
 
 
 # --------------------------------------------------------------------------
-# Workflow 2: Copilot risk assessment (risk + completeness + summary +
+# Workflow 2: conversational correction (amend) — returns ONLY changed fields
+# --------------------------------------------------------------------------
+def _amend_node(state: ComplaintState) -> dict:
+    current = state.get("extracted_fields") or state.get("current_fields") or {}
+    new_message = state.get("raw_text") or state.get("description") or ""
+    prompt = (
+        f"Current extracted fields: {json.dumps(current, ensure_ascii=False)}\n"
+        f"New customer message: {new_message}"
+    )
+    response = llm_call(AMEND_SYSTEM, prompt)
+    data = extract_json(response) or {}
+    changes = {k: _stringify(v) for k, v in data.items() if _stringify(v)}
+    return {"field_changes": changes}
+
+
+def _amend_final(state: ComplaintState) -> dict:
+    return {"result": {"changes": state.get("field_changes", {})}}
+
+
+def build_amend_workflow():
+    g = StateGraph(ComplaintState)
+    g.add_node("amend", _amend_node)
+    g.add_node("finalize", _amend_final)
+    g.add_edge(START, "amend")
+    g.add_edge("amend", "finalize")
+    g.add_edge("finalize", END)
+    return g.compile()
+
+
+# --------------------------------------------------------------------------
+# Workflow 3: Copilot risk assessment (risk + completeness + summary +
 #              root cause + CAPA in a single graph run)
 # --------------------------------------------------------------------------
 def _assess_risk_node(state: ComplaintState) -> dict:
@@ -212,6 +261,7 @@ def build_assess_workflow():
 
 
 _extract_workflow = None
+_amend_workflow = None
 _assess_workflow = None
 
 
@@ -220,6 +270,13 @@ def get_extract_workflow():
     if _extract_workflow is None:
         _extract_workflow = build_extract_workflow()
     return _extract_workflow
+
+
+def get_amend_workflow():
+    global _amend_workflow
+    if _amend_workflow is None:
+        _amend_workflow = build_amend_workflow()
+    return _amend_workflow
 
 
 def get_assess_workflow():

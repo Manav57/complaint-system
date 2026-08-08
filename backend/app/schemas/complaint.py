@@ -173,3 +173,17 @@ class AIAnalysisResponse(BaseModel):
     capa_recommendation: str | None
     duplicate_of: str | None
     duplicate_score: float | None
+
+
+# ---------- Conversational intake sessions ----------
+class SessionCreateResponse(BaseModel):
+    session_id: str
+    fields: dict[str, Any]
+    reply: str
+
+
+class SessionMessageResponse(BaseModel):
+    session_id: str
+    fields: dict[str, Any]
+    changed: dict[str, Any]
+    reply: str

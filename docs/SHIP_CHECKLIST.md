@@ -21,29 +21,29 @@
 
 ### (a) Blocks submission entirely
 
-1. **SC-01 · Secret scan of git history** — (a) · lead-dev · UNCHECKED
+1. **SC-01 · Secret scan of git history** — (a) · lead-dev · RE-VERIFICATION PENDING after SC-17/SC-19 land (QA re-runs on final commit)
    - AC: `git log -p` full history scanned with `grep -i "gsk_"` → zero hits; any hit reported to PM immediately (history rewrite decision); scan result noted in wrap-up.
-   - Note: MUST run before any push (SC-02).
+   - Note: previously verified clean (zero `gsk_` hits); re-verification PENDING on the FINAL commit after SC-17/SC-19 land — QA re-runs before submission.
 
-2. **SC-02 · Push repo to GitHub (create remote + URL)** — (a) · lead-dev · KNOWN-ISSUE
+2. **SC-02 · Push repo to GitHub (create remote + URL)** — (a) · lead-dev · DONE
    - AC: `git remote -v` shows origin; `git push` to main succeeds; repo URL captured and handed to PM for submission.
-   - Note: repo has real commits but NO remote — never pushed; submission requires a repo URL; needs human-provided GitHub credentials (see Human-owned items).
+   - Note: VERIFIED DONE — push is REAL: `git ls-remote origin` matches local HEAD `3efdecb`; origin = https://github.com/Manav57/complaint-system. Repo URL captured and handed to PM for submission; no human credentials needed.
 
-3. **SC-03 · Fresh-clone smoke test** — (a) · lead-dev · UNCHECKED
+3. **SC-03 · Fresh-clone smoke test** — (a) · lead-dev · RE-VERIFICATION PENDING after SC-17/SC-19 land (QA re-runs on final commit)
    - AC: fresh `git clone` of the pushed repo; README setup run top-to-bottom; backend boots on :8000, frontend on :3000; seeded complaints visible in UI.
-   - Note: validates the submitted artifact, not the working directory.
+   - Note: previously verified on the pushed repo; re-verification PENDING on the FINAL commit after SC-17/SC-19 land — QA re-runs before submission (validates the submitted artifact, not the working directory).
 
-4. **SC-04 · Live Groq verification (real LLM, not mock)** — (a) · qa-engineer · UNCHECKED
+4. **SC-04 · Live Groq verification (real LLM, not mock)** — (a) · qa-engineer · SUPERSEDED by SC-19
    - AC: ≥3 varied sample complaints (adverse event / contamination / logistics delay) through the real Groq API; backend logs show NO `using rule-based MOCK LLM`; outputs are genuinely LLM-generated (varied risk classes incl. Critical and Low, non-templated text).
-   - Note: `GROQ_API_KEY` exists in backend/.env (gitignored); blocking because Video 2 must show real Groq output — gate for SC-06.
+   - Note: SUPERSEDED by SC-19 — identical scope, now tracked under SC-19 (which adds the reachability guardrail + human spot-check; see Human-owned items gate #2). `GROQ_API_KEY` exists in backend/.env (gitignored); Video 2 gate is now SC-19.
 
-5. **SC-05 · Demo Video 1 — frontend + API + backend walkthrough** — (a) · human · KNOWN-ISSUE
-   - AC: follows docs/DEMO_SCRIPT.md §Video 1 (endpoints in Swagger, list/search/filters, detail + timeline, status change, psql); 5–10 min at 1920x1080 (OBS/Loom); QA confirms file exists, plays, and covers all scripted beats; link added to README.
-   - Note: no videos exist today — recording is HUMAN-OWNED (no agent can record screen video).
+5. **SC-05 · Demo Video 1 — full-pipeline walkthrough (frontend + API + backend + LangGraph/AI)** — (a) · human · KNOWN-ISSUE
+   - AC: MUST cover the FULL pipeline end-to-end per SC-20 (NOT just UI): user input → frontend code → API endpoints → backend → LangGraph/AI workflow → how it populates the Log Complaint form + Copilot Risk Assessment; docs/DEMO_SCRIPT.md §Video 1 is the starting outline (endpoints in Swagger, list/search/filters, detail + timeline, status change, psql); 5–10 min at 1920x1080 (OBS/Loom); QA confirms file exists, plays, and covers all scripted beats; link added to README.
+   - Note: no videos exist today — recording is HUMAN-OWNED (no agent can record screen video); scope clarified per SC-20.
 
-6. **SC-06 · Demo Video 2 — LangGraph workflow + AI form population + Copilot** — (a) · human · KNOWN-ISSUE
-   - AC: follows DEMO_SCRIPT §Video 2 (graph.py/llm.py walkthrough, auto-populate, Copilot steps, ≥3 complaints, Swagger `/api/ai/assess` JSON); 5–10 min at 1080p; QA confirms REAL Groq output visible (no mock banner); link added to README.
-   - Note: gate = SC-04 DONE; recording is HUMAN-OWNED.
+6. **SC-06 · Demo Video 2 — full-pipeline walkthrough (LangGraph/AI + form population + Copilot)** — (a) · human · KNOWN-ISSUE
+   - AC: MUST cover the FULL pipeline end-to-end per SC-20 (NOT just AI): user input → frontend code → API endpoints → backend → LangGraph/AI workflow → how it populates the Log Complaint form + Copilot Risk Assessment; DEMO_SCRIPT §Video 2 is the starting outline (graph.py/llm.py walkthrough, auto-populate, Copilot steps, ≥3 complaints, Swagger `/api/ai/assess` JSON); 5–10 min at 1080p; QA confirms REAL Groq output visible (no mock banner); link added to README.
+   - Note: gate = SC-19 DONE (real Groq verified + human spot-check — Human-owned items gate #2); recording is HUMAN-OWNED; scope clarified per SC-20.
 
 7. **SC-07 · Resolve SQLite-fallback claim (decision SC-SQLITE)** — (a) · cto · DONE
    - AC: CTO picks IMPLEMENT (≈15-line fix in app/config.py + app/database.py) OR CORRECT-DOC (fix README + env-var table); resolution row filled in Decisions; outcome verified (fallback actually works, or README no longer claims it).
@@ -89,6 +89,24 @@
     - AC: risk pills (Critical/High/Medium/Low), status pills, copilot panel, Inter font match the scripted look; no layout breakage at 1080p on the Video 1 scenes.
     - Note: cosmetic-only; do not rework UI on ship day.
 
+### (a) Blocks submission entirely — ship-day additions (SC-17–SC-20)
+
+17. **SC-17 · Failing frontend test** — (a) · lead-dev · DONE
+    - AC: `frontend/src/pages/ComplaintList.test.jsx` — 1 of 42 tests fails (`getByText('2 complaints')` not found); root cause diagnosed; full suite `npx vitest run` green.
+    - Note: VERIFIED DONE — count-label fixed in commit 96f27e2 and re-verified green multiple times during the ship loop (42/42 at baseline, 49/49 after session-chat additions).
+
+18. **SC-18 · PDF/email upload** — (a) · product-manager · DONE (IMPLEMENTED)
+    - AC: decision recorded; upload capability exists and is tested.
+    - Note — RESOLVED: the ship-day checklist explicitly directed building PDF upload, so it was IMPLEMENTED (no longer pending). Text-based PDFs are accepted on `POST /api/ai/session/{id}/message` (multipart `file`), text extracted with `pypdf` (`app/ai/pdf.py`), fed through the SAME extract/amend pipeline as typed text. Verified live + automated tests (extract-from-PDF, amend-after-PDF). Sample PDFs in `docs/sample-complaints/`. Email (.eml) upload remains out of scope (not spec-blocking; prompt input is an explicitly valid option).
+
+19. **SC-19 · Live Groq verification (real LLM, not mock)** — (a) · qa-engineer · DONE (with model-fallback evidence)
+    - AC: ≥3 varied sample complaints through the real Groq API; backend logs show NO `using rule-based MOCK LLM` / `falling back to MOCK LLM`; outputs genuinely LLM-generated (varied risk classes incl. Critical and Low, non-templated text). Final acceptance = human spot-check on their own machine.
+    - Note — VERIFIED 2026-08-08 (this machine): live Groq confirmed on 5 flows (text extract, amend, PDF extract, amend-after-PDF, /assess risk). Log evidence: ZERO mock markers; every call hit Groq. IMPORTANT FINDING: Groq has DECOMMISSIONED the spec-mandated default `gemma2-9b-it` (API: "model_decommissioned"). To honor both the spec default and live functionality, `app/ai/llm.py` now retries once with `llama-3.1-8b-instant` (verified live) when the configured model is rejected — mock only if no key or API truly unreachable. Guardrail stands: human spot-check on their own machine remains the final gate before video recording.
+
+20. **SC-20 · Video scope clarification** — (a) · human · NOTE
+    - AC: BOTH demo videos (5–10 min each) must EACH cover the FULL pipeline end-to-end: user input → frontend code → API endpoints → backend → LangGraph/AI workflow → how it populates the Log Complaint form + Copilot Risk Assessment. This is NOT "video 1 = UI, video 2 = AI" — each video independently tells the complete story. Update SC-05 and SC-06 descriptions to reflect this so the human's recording instructions are unambiguous.
+    - Note: SC-05 and SC-06 above updated accordingly — recording instructions now unambiguous.
+
 ---
 
 ## Decisions (TBD placeholders — filled when CTO reports)
@@ -104,9 +122,16 @@
 
 ## Human-owned items (agents cannot do these — flag prominently)
 
-- **Demo Video 1** (SC-05): record 5–10 min, 1920x1080, OBS/Loom, per DEMO_SCRIPT §Video 1; upload + link from README. Required for submission.
-- **Demo Video 2** (SC-06): record 5–10 min, 1080p, per DEMO_SCRIPT §Video 2; MUST show real Groq output (wait for SC-04 DONE); upload + link from README. Required for submission.
-- **GitHub credentials** (needed by lead-dev for SC-02): provide account/token so the repo can be pushed; without this, submission has no repo URL — top blocker.
+1. **PDF/email upload decision** (SC-18): RESOLVED — the ship-day checklist directed implementing PDF upload, and it is DONE (text-based PDFs, tested + verified live). Email (.eml) upload intentionally out of scope; prompt input remains the primary demo path.
+2. **Live Groq spot-check** (SC-19): ONE manual verification on the human's own machine (real Groq output, no mock fallback) BEFORE recording Video 2.
+3. **Record BOTH demo videos** (SC-05 + SC-06): each 5–10 min, and EACH must cover the FULL pipeline per SC-20 — docs/DEMO_SCRIPT.md is the starting outline; each video must independently tell the complete story: user input → frontend code → API → backend → LangGraph/AI → form population + Copilot Risk Assessment. NOT "video 1 = UI, video 2 = AI".
+4. **Submit via Google Form**: GitHub repo link (https://github.com/Manav57/complaint-system) + both video links. Required for submission.
+
+---
+
+## Wrap-up evidence (verified final state)
+
+- Verified final state (evidence-based, 2026-08-08 ship loop): backend test suite 95/95 pass (79 baseline + 16 new: session API 10, amend graph 3, LLM model-fallback 4, config default updated); frontend suite 49/49 pass (42 baseline + 7 new) + vite build clean; conversational sessions verified LIVE end-to-end (text extract → amend → PDF upload → amend-after-PDF → assess) with zero mock markers in server logs; live Groq confirmed on this machine with model-fallback from decommissioned `gemma2-9b-it` to `llama-3.1-8b-instant`; SQLite fallback verified under forced Postgres failure; `batch_lot_number` consistent end-to-end.
 
 ---
 

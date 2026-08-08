@@ -3,17 +3,39 @@
 If GROQ_API_KEY is not set, a rule-based mock simulates the LLM so the
 full app (LangGraph graph, endpoints, UI) can be exercised end-to-end.
 The mock is clearly marked and logs a warning.
+
+Model resilience: the spec-mandated default GROQ_MODEL is ``gemma2-9b-it``.
+Groq has decommissioned that model id, so when a live call is rejected with a
+model-level error (decommissioned / does not exist), the call is transparently
+retried once with a known-supported model (see ``_MODEL_FALLBACKS``) before
+falling back to the mock. The configured default is untouched, so the spec
+requirement still holds while a real API key keeps producing live output.
 """
 import json
 import logging
 import re
-from functools import lru_cache
 
 from app.config import get_settings
 
 logger = logging.getLogger("groq")
 
 settings = get_settings()
+
+# Models that Groq has decommissioned/removed map to a supported replacement.
+# ``gemma2-9b-it`` is the spec-mandated default but is no longer served by
+# Groq; ``llama-3.1-8b-instant`` is verified live and takes its place at runtime.
+_MODEL_FALLBACKS: dict[str, str] = {
+    "gemma2-9b-it": "llama-3.1-8b-instant",
+}
+
+
+def _is_model_rejection(exc: Exception) -> bool:
+    """True when Groq rejected the request because of the model id itself."""
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in ("decommissioned", "does not exist", "model_not_found", "model not found")
+    )
 
 _GROQ_IMPORT_ERROR = None
 try:
@@ -32,29 +54,41 @@ def _load_client(model: str):
     return ChatGroq(api_key=settings.groq_api_key, model=model, temperature=0.2)
 
 
-@lru_cache(maxsize=4)
-def _default_client():
-    return _load_client(settings.groq_model)
-
-
-@lru_cache(maxsize=4)
-def _heavy_client():
-    return _load_client(settings.groq_heavy_model)
+def _invoke(model: str, system_prompt: str, user_prompt: str) -> str:
+    msg = _load_client(model).invoke([("system", system_prompt), ("user", user_prompt)])
+    return str(msg.content).strip()
 
 
 def llm_call(system_prompt: str, user_prompt: str, *, heavy: bool = False, max_tokens: int = 1500) -> str:
-    """Call Groq (llama-3.1-8b-instant by default, llama-3.3-70b-versatile for heavy steps)."""
+    """Call Groq (gemma2-9b-it by default, llama-3.3-70b-versatile for heavy steps).
+
+    Model rejection (decommissioned/removed model id) is retried once with a
+    supported fallback model before falling back to the mock.
+    """
     if not settings.groq_configured:
         logger.warning("GROQ_API_KEY not set - using rule-based MOCK LLM (not real Groq).")
         return _mock_llm(system_prompt, user_prompt)
-    client = _heavy_client() if heavy else _default_client()
-    if client is None:
-        logger.warning("Groq client unavailable - using rule-based MOCK LLM.")
+    if ChatGroq is None:
+        logger.error("langchain-groq not installed: %s", _GROQ_IMPORT_ERROR)
         return _mock_llm(system_prompt, user_prompt)
+    model = settings.groq_heavy_model if heavy else settings.groq_model
     try:
-        msg = client.invoke([("system", system_prompt), ("user", user_prompt)])
-        return str(msg.content).strip()
+        return _invoke(model, system_prompt, user_prompt)
     except Exception as e:
+        fallback = _MODEL_FALLBACKS.get(model) if _is_model_rejection(e) else None
+        if fallback:
+            logger.warning(
+                "Groq model %r unavailable (%s) - retrying once with %r", model, e, fallback
+            )
+            try:
+                return _invoke(fallback, system_prompt, user_prompt)
+            except Exception as e2:
+                logger.error(
+                    "Groq fallback call failed (%s); falling back to MOCK LLM. Error: %s",
+                    type(e2).__name__,
+                    e2,
+                )
+                return _mock_llm(system_prompt, user_prompt)
         logger.error("Groq call failed (%s); falling back to MOCK LLM. Error: %s", type(e).__name__, e)
         return _mock_llm(system_prompt, user_prompt)
 
@@ -104,6 +138,8 @@ _RISK_PATTERNS: list[tuple[re.Pattern, str, float, str]] = [
 
 def _mock_llm(system_prompt: str, user_prompt: str) -> str:
     combined = (system_prompt + " " + user_prompt).lower()
+    if "amend" in combined:
+        return _mock_amend(user_prompt)
     if "extract structured" in combined or "auto-populate" in combined:
         return _mock_extract(user_prompt)
     if "risk assessor" in combined:
@@ -115,6 +151,37 @@ def _mock_llm(system_prompt: str, user_prompt: str) -> str:
     if "summary" in combined:
         return _mock_summary(user_prompt)
     return "MOCK: no handler matched."
+
+
+def _mock_amend(user_prompt: str) -> str:
+    """Mock for the amend workflow: re-extract the new message and return only
+    the fields that actually differ from the current extracted fields."""
+    current: dict[str, str] = {}
+    m = re.search(r"Current extracted fields:\s*(\{.*?\})\s*New customer message:", user_prompt, re.S)
+    if m:
+        try:
+            parsed = json.loads(m.group(1))
+            current = parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            current = {}
+    m = re.search(r"New customer message:\s*(.+)$", user_prompt, re.S)
+    new_message = m.group(1) if m else user_prompt
+    fresh = {}
+    try:
+        fresh = json.loads(_mock_extract(new_message))
+    except json.JSONDecodeError:
+        fresh = {}
+    changed = {}
+    for k, v in fresh.items():
+        if k == "severity" and not re.search(
+            r"severity|critical|serious|urgent|adverse|emergency|hospital|rash|swelling|allerg",
+            new_message,
+            re.I,
+        ):
+            continue  # mock defaults severity; only change it on an explicit severity signal
+        if fresh.get(k) != current.get(k):
+            changed[k] = v
+    return json.dumps(changed)
 
 
 def _mock_extract(text: str) -> str:
@@ -137,10 +204,10 @@ def _mock_extract(text: str) -> str:
         if p.lower() in text.lower():
             fields["product_name"] = p
             break
-    m = re.search(r"(?i)batch[\s#]*([A-Za-z0-9\-]+)", text)
+    m = re.search(r"(?i)batch[\s#]*(?:number\s+(?:is|was)\s+|(?:is|was)\s+|no\.?\s*)?([A-Za-z0-9\-]+)", text)
     if m:
         fields["batch_lot_number"] = m.group(1).upper()
-    m = re.search(r"(?i)lot[\s#]*([A-Za-z0-9\-]+)", text)
+    m = re.search(r"(?i)lot[\s#]*(?:number\s+(?:is|was)\s+|(?:is|was)\s+|no\.?\s*)?([A-Za-z0-9\-]+)", text)
     if m and "batch_lot_number" not in fields:
         fields["batch_lot_number"] = m.group(1).upper()
     for c in _CATEGORIES:

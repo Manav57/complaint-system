@@ -93,9 +93,46 @@ def test_assess_summary_node_cleans_whitespace(monkeypatch):
     assert state["summary"] == "spaced out text."
 
 
+# ---------------------------------------------------------------- amend workflow
+def test_amend_workflow_changes_only_mentioned_field():
+    g = graph.build_amend_workflow()
+    state = g.invoke(
+        {
+            "extracted_fields": {
+                "product_name": "Paracetamol",
+                "batch_lot_number": "PAR-2025-2210",
+                "severity": "High",
+            },
+            "raw_text": "Actually, the correct batch number is PAR-2025-2211",
+        }
+    )
+    assert state["field_changes"] == {"batch_lot_number": "PAR-2025-2211"}
+    assert state["result"]["changes"] == state["field_changes"]
+
+
+def test_amend_workflow_no_changes_returns_empty():
+    g = graph.build_amend_workflow()
+    state = g.invoke(
+        {"extracted_fields": {"batch_lot_number": "PAR-2025-2210"}, "raw_text": "Thanks, that is all."}
+    )
+    assert state["field_changes"] == {}
+
+
+def test_amend_workflow_updates_severity_when_signalled():
+    g = graph.build_amend_workflow()
+    state = g.invoke(
+        {
+            "extracted_fields": {"batch_lot_number": "PAR-2025-2210", "severity": "Medium"},
+            "raw_text": "Update: this is actually a serious adverse event, severity High.",
+        }
+    )
+    assert state["field_changes"]["severity"] == "High"
+
+
 # ---------------------------------------------------------------- workflow singletons
 def test_workflow_singletons():
     assert graph.get_extract_workflow() is graph.get_extract_workflow()
+    assert graph.get_amend_workflow() is graph.get_amend_workflow()
     assert graph.get_assess_workflow() is graph.get_assess_workflow()
 
 

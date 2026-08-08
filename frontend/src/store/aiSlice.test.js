@@ -1,12 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { configureStore } from '@reduxjs/toolkit'
 import reducer, {
+  createAiSession,
   runExtract,
   runAssess,
   runCompleteness,
   resetExtract,
   resetAssess,
   resetCompleteness,
+  resetSession,
+  sendAiMessage,
   addStep,
 } from './aiSlice'
 
@@ -15,6 +18,8 @@ vi.mock('../services/api', () => ({
     aiExtract: vi.fn(),
     aiAssess: vi.fn(),
     aiCompleteness: vi.fn(),
+    aiCreateSession: vi.fn(),
+    aiSendMessage: vi.fn(),
   },
 }))
 
@@ -28,6 +33,7 @@ describe('aiSlice reducers', () => {
       extract: { fields: {}, loading: false, error: null },
       assess: { result: null, loading: false, steps: [], error: null },
       completeness: { report: null, loading: false, error: null },
+      session: { sessionId: null, loading: false, error: null },
     })
   })
 
@@ -43,6 +49,10 @@ describe('aiSlice reducers', () => {
     state = reducer(state, runCompleteness.fulfilled({ complete: true }))
     state = reducer(state, resetCompleteness())
     expect(state.completeness).toEqual({ report: null, loading: false, error: null })
+
+    state = reducer(state, createAiSession.fulfilled({ session_id: 's1' }))
+    state = reducer(state, resetSession())
+    expect(state.session).toEqual({ sessionId: null, loading: false, error: null })
   })
 
   it('addStep appends to assess steps', () => {
@@ -134,5 +144,38 @@ describe('aiSlice async thunks', () => {
     await store.dispatch(runCompleteness('Customer reports an issue'))
     expect(api.aiCompleteness).toHaveBeenCalledWith('Customer reports an issue')
     expect(store.getState().ai.completeness.report.complete).toBe(true)
+  })
+
+  it('createAiSession stores the session id', async () => {
+    api.aiCreateSession.mockResolvedValue({ session_id: 'sess-123', fields: {}, reply: 'Hi!' })
+    const store = makeStore()
+    await store.dispatch(createAiSession())
+    expect(api.aiCreateSession).toHaveBeenCalledTimes(1)
+    expect(store.getState().ai.session.sessionId).toBe('sess-123')
+  })
+
+  it('createAiSession rejection stores error', async () => {
+    api.aiCreateSession.mockRejectedValue(new Error('down'))
+    const store = makeStore()
+    await store.dispatch(createAiSession())
+    expect(store.getState().ai.session.error).toBe('down')
+  })
+
+  it('sendAiMessage calls api.aiSendMessage with session id and body', async () => {
+    const body = { text: 'the batch is PAR-1' }
+    api.aiSendMessage.mockResolvedValue({ fields: {}, changed: { batch_lot_number: 'PAR-1' }, reply: 'ok' })
+    const store = makeStore()
+    await store.dispatch(sendAiMessage({ sessionId: 'sess-123', body }))
+    expect(api.aiSendMessage).toHaveBeenCalledWith('sess-123', body)
+    expect(store.getState().ai.session.loading).toBe(false)
+  })
+
+  it('sendAiMessage passes FormData straight through', async () => {
+    const fd = new FormData()
+    fd.append('file', new Blob(['x']), 'c.pdf')
+    api.aiSendMessage.mockResolvedValue({ fields: {}, changed: {}, reply: 'ok' })
+    const store = makeStore()
+    await store.dispatch(sendAiMessage({ sessionId: 'sess-123', body: fd }))
+    expect(api.aiSendMessage).toHaveBeenCalledWith('sess-123', fd)
   })
 })

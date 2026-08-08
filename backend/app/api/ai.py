@@ -1,13 +1,21 @@
 """AI endpoints wired to the LangGraph workflows (form autofill + copilot assessment)."""
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.ai.graph import (
+    build_amend_workflow,
     build_assess_workflow,
     build_extract_workflow,
     find_duplicates,
+)
+from app.ai.pdf import extract_pdf_text
+from app.ai.session import (
+    append_message,
+    create_session,
+    get_session,
+    update_session_fields,
 )
 from app.crud import get_complaint, list_for_duplicate_check
 from app.database import get_db
@@ -19,10 +27,54 @@ from app.schemas.complaint import (
     ExtractResponse,
     RiskAssessmentRequest,
     RiskAssessmentResponse,
+    SessionCreateResponse,
+    SessionMessageResponse,
 )
 
 router = APIRouter(prefix="/api/ai", tags=["ai agent"])
 logger = logging.getLogger("ai_api")
+
+_MAX_PDF_BYTES = 10 * 1024 * 1024  # 10 MB cap on PDF uploads
+
+_FIELD_LABELS = {
+    "complainant_name": "Complainant Name",
+    "complainant_email": "Email",
+    "complainant_phone": "Phone",
+    "complainant_company": "Company",
+    "product_name": "Product Name",
+    "batch_lot_number": "Batch/Lot Number",
+    "dosage_form": "Dosage Form",
+    "strength": "Strength",
+    "expiry_date": "Expiry Date",
+    "category": "Category",
+    "severity": "Severity",
+    "quantity_affected": "Quantity Affected",
+    "description": "Description",
+}
+
+
+def _field_label(key: str) -> str:
+    return _FIELD_LABELS.get(key, key.replace("_", " ").title())
+
+
+def _build_session_reply(changed: dict, *, first: bool) -> str:
+    """Short natural-language reply for the chat bubble."""
+    if first:
+        if not changed:
+            return (
+                "Hmm, I couldn't extract any details from that message. Could you include "
+                "the product, batch/lot number, and what the customer reported?"
+            )
+        names = ", ".join(_field_label(k) for k in changed)
+        plural = "s" if len(changed) != 1 else ""
+        return (
+            f"Got it — I extracted {len(changed)} field{plural} ({names}) into the form. "
+            "Send a follow-up to correct anything."
+        )
+    if not changed:
+        return "Got it — no fields needed updating based on that message."
+    bits = [f"{_field_label(k)} to {v}" for k, v in changed.items()]
+    return "Got it, I've updated " + ", ".join(bits) + "."
 
 
 @router.post("/extract", response_model=ExtractResponse)
@@ -32,6 +84,97 @@ def extract_fields(payload: ExtractRequest):
     state = graph.invoke({"raw_text": payload.text, "description": payload.text})
     fields = state.get("extracted_fields", {}) or state.get("result", {}).get("fields", {})
     return ExtractResponse(fields=fields, raw_text=payload.text)
+
+
+# --------------------------------------------------------------------------
+# Conversational correction (in-memory sessions) + PDF upload
+# --------------------------------------------------------------------------
+@router.post("/session", response_model=SessionCreateResponse)
+def create_ai_session():
+    """Start a conversational intake session."""
+    session = create_session()
+    return SessionCreateResponse(
+        session_id=session["session_id"],
+        fields={},
+        reply=(
+            "Hi! I'm your intake assistant. Paste the customer's complaint message "
+            "(or attach a PDF) and I'll extract the details into the form. "
+            "You can follow up afterwards to correct anything."
+        ),
+    )
+
+
+@router.post("/session/{session_id}/message", response_model=SessionMessageResponse)
+async def send_session_message(session_id: str, request: Request):
+    """Send a message to a session: ``{"text": ...}`` JSON body or a PDF file upload.
+
+    First message -> LangGraph extract workflow (populates all fields).
+    Follow-up    -> LangGraph amend workflow (changes ONLY the mentioned fields).
+    """
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    content_type = (request.headers.get("content-type") or "").lower()
+    message: str | None = None
+
+    if "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
+        form = await request.form()
+        file = form.get("file")
+        if file is not None:
+            filename = (getattr(file, "filename", "") or "").lower()
+            ctype = (getattr(file, "content_type", "") or "").lower()
+            if filename and not filename.endswith(".pdf") and ctype and "pdf" not in ctype:
+                raise HTTPException(status_code=400, detail="Only PDF attachments are supported.")
+            content = await file.read(_MAX_PDF_BYTES + 1)
+            if len(content) > _MAX_PDF_BYTES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"PDF is too large (max {_MAX_PDF_BYTES // (1024 * 1024)} MB).",
+                )
+            try:
+                message = extract_pdf_text(content)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Could not read PDF: {e}") from e
+        else:
+            text_field = form.get("text")
+            if text_field:
+                message = str(text_field)
+    else:
+        try:
+            body = await request.json()
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="Provide a 'text' message or a PDF 'file'.") from e
+        text = (body or {}).get("text")
+        if text:
+            message = str(text)
+
+    if not message or not message.strip():
+        raise HTTPException(status_code=400, detail="Provide a 'text' message or a PDF 'file'.")
+    message = message.strip()
+
+    current = dict(session["fields"])
+    first = not current
+    if first:
+        graph = build_extract_workflow()
+        state = graph.invoke({"raw_text": message, "description": message})
+        changed = state.get("extracted_fields", {}) or state.get("result", {}).get("fields", {}) or {}
+    else:
+        graph = build_amend_workflow()
+        state = graph.invoke({"extracted_fields": current, "raw_text": message, "description": message})
+        changed = state.get("field_changes", {}) or state.get("result", {}).get("changes", {}) or {}
+
+    session = update_session_fields(session_id, changed)
+    reply = _build_session_reply(changed, first=first)
+    append_message(session_id, "user", message)
+    append_message(session_id, "assistant", reply)
+
+    return SessionMessageResponse(
+        session_id=session_id,
+        fields=dict(session["fields"]),
+        changed=changed,
+        reply=reply,
+    )
 
 
 @router.post("/assess", response_model=RiskAssessmentResponse)

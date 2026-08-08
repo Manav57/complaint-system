@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { runExtract, runAssess, runCompleteness, resetAssess } from '../store/aiSlice'
+import {
+  createAiSession,
+  runExtract,
+  runAssess,
+  runCompleteness,
+  resetAssess,
+  sendAiMessage,
+} from '../store/aiSlice'
 import { createComplaint } from '../store/complaintsSlice'
 
 const EMPTY_FORM = {
@@ -67,17 +74,36 @@ export default function ComplaintForm() {
   const [appliedFields, setAppliedFields] = useState([])
   const [aiBanner, setAiBanner] = useState(null)
   const [submitted, setSubmitted] = useState(false)
+  const [chatMessages, setChatMessages] = useState([])
+  const [chatInput, setChatInput] = useState('')
+  const fileInputRef = useRef(null)
   const missingRef = useRef([])
 
   const aiExtract = useSelector((s) => s.ai.extract)
   const assess = useSelector((s) => s.ai.assess)
   const completeness = useSelector((s) => s.ai.completeness)
+  const aiSession = useSelector((s) => s.ai.session)
   const saving = useSelector((s) => s.complaints.saving)
   const createError = useSelector((s) => s.complaints.error)
 
   useEffect(() => {
     dispatch(resetAssess())
   }, [dispatch])
+
+  // Start one conversational intake session for this form.
+  useEffect(() => {
+    if (aiSession.sessionId) return
+    let cancelled = false
+    dispatch(createAiSession())
+      .unwrap()
+      .then((res) => {
+        if (!cancelled) setChatMessages((m) => [...m, { role: 'assistant', text: res.reply }])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [aiSession.sessionId, dispatch])
 
   const setField = (key, value) => {
     setForm((f) => ({ ...f, [key]: value }))
@@ -94,6 +120,60 @@ export default function ComplaintForm() {
     })
     setForm(next)
     setAppliedFields(applied)
+  }
+
+  // Conversational corrections merge ONLY the changed fields, leaving the rest untouched.
+  const applyChangedFields = (fields) => {
+    const applied = []
+    const next = { ...form }
+    Object.entries(fields || {}).forEach(([k, v]) => {
+      if (k in EMPTY_FORM && v && String(v).trim() && String(v).trim() !== next[k]) {
+        next[k] = String(v).trim()
+        applied.push(k)
+      }
+    })
+    if (applied.length === 0) return
+    setForm(next)
+    setAiBanner({
+      type: 'success',
+      message: `Conversation updated ${applied.length} field${applied.length > 1 ? 's' : ''}: ${applied
+        .map((f) => FIELD_LABELS[f] || f)
+        .join(', ')}.`,
+    })
+  }
+
+  const pushAssistant = (text) => setChatMessages((m) => [...m, { role: 'assistant', text }])
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault()
+    const text = chatInput.trim()
+    if (!text || !aiSession.sessionId) return
+    setChatInput('')
+    setChatMessages((m) => [...m, { role: 'user', text }])
+    try {
+      const res = await dispatch(sendAiMessage({ sessionId: aiSession.sessionId, body: { text } })).unwrap()
+      pushAssistant(res.reply)
+      applyChangedFields(res.changed)
+    } catch (err) {
+      pushAssistant(`⚠️ ${err}`)
+    }
+  }
+
+  const handleFileAttach = async (e) => {
+    const file = e.target.files && e.target.files[0]
+    if (!file || !aiSession.sessionId) return
+    setChatMessages((m) => [...m, { role: 'user', text: `📎 Attached ${file.name}` }])
+    const fd = new FormData()
+    fd.append('file', file)
+    try {
+      const res = await dispatch(sendAiMessage({ sessionId: aiSession.sessionId, body: fd })).unwrap()
+      pushAssistant(res.reply)
+      applyChangedFields(res.changed)
+    } catch (err) {
+      pushAssistant(`⚠️ ${err}`)
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   const handleAutofill = async () => {
@@ -356,11 +436,59 @@ export default function ComplaintForm() {
             <span style={{ fontSize: 18 }}>🤖</span>
             <div>
               <div style={{ fontWeight: 700, fontSize: 14 }}>AI Copilot</div>
-              <div style={{ fontSize: 11.5, opacity: 0.85 }}>LangGraph · Groq llama-3.1-8b-instant</div>
+              <div style={{ fontSize: 11.5, opacity: 0.85 }}>Conversational intake · LangGraph · Groq gemma2-9b-it</div>
             </div>
-            <span className="copilot-badge">Risk Assessment</span>
+            <span className="copilot-badge">Intake Chat</span>
           </div>
           <div className="copilot-body">
+            {/* Conversational intake chat */}
+            <div className="chat-window">
+              {chatMessages.map((m, i) => (
+                <div key={i} className={`chat-msg chat-${m.role}`}>
+                  {m.text}
+                </div>
+              ))}
+              {aiSession.loading && (
+                <div className="chat-msg chat-assistant chat-typing">
+                  <span className="spinner dark" /> Thinking…
+                </div>
+              )}
+            </div>
+            {aiSession.error && (
+              <div className="banner banner-danger" style={{ marginBottom: 0 }}>
+                <span>⚠️</span>
+                <span>Session error: {aiSession.error}</span>
+              </div>
+            )}
+            <form className="chat-input" onSubmit={handleSendMessage}>
+              <button
+                type="button"
+                className="chat-attach"
+                title="Attach a PDF complaint"
+                onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                disabled={!aiSession.sessionId}
+              >
+                📎
+              </button>
+              <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" hidden onChange={handleFileAttach} />
+              <input
+                className="chat-text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Paste message or send a correction…"
+                disabled={aiSession.loading || !aiSession.sessionId}
+              />
+              <button
+                type="submit"
+                className="btn btn-primary btn-sm"
+                disabled={!chatInput.trim() || aiSession.loading || !aiSession.sessionId}
+              >
+                ➤
+              </button>
+            </form>
+            <div className="copilot-divider">
+              <span>Risk Assessment</span>
+            </div>
             {!assess.result && !assess.loading && (
               <div className="copilot-empty">
                 Fill in the complaint description and click <strong>Run Copilot assessment</strong>.

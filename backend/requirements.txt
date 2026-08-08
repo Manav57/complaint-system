@@ -12,3 +12,5 @@ langchain-core==0.3.75
 groq==0.30.0
 httpx==0.28.1
 python-multipart==0.0.20
+pypdf==6.15.0
+reportlab==3.6.12
