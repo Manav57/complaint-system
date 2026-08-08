@@ -84,7 +84,8 @@ describe('ComplaintList page', () => {
     expect(screen.getByText('CMP-20260808-0002')).toBeInTheDocument()
     expect(screen.getByText('Jane Wilson')).toBeInTheDocument()
     expect(screen.getByText(/1 critical, 1 high risk/)).toBeInTheDocument()
-    expect(screen.getByText('2 complaints')).toBeInTheDocument()
+    // Count + risk summary render as one combined label: "2 complaints · 1 critical, 1 high risk"
+    expect(screen.getByText(/2 complaints/)).toBeInTheDocument()
   })
 
   it('shows error banner when loading fails', async () => {
