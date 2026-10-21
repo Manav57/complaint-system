@@ -53,3 +53,9 @@ def health():
     except Exception as e:  # pragma: no cover
         db_ok = str(e)
     return {"status": "ok", "database": db_ok, "groq_configured": settings.groq_configured}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="127.0.0.1", port=8000)
